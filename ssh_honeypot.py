@@ -34,8 +34,6 @@ def emulate_shell(channel, client_ip):
         if not char:
             channel.close()
         
-
-print("Anus anus anus has smnok penis")
 # SSH Server + Sockets
 
 # Provision SSH_based  Server
