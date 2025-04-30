@@ -48,9 +48,6 @@ def emulate_shell(channel, client_ip):
         channel.send(b"user@honeypot$ ")
         command = b""
 
-
-#test
-
 # SSH Server + Sockets
 
 # Provision SSH_based  Server
