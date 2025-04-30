@@ -50,7 +50,6 @@ def emulate_shell(channel, client_ip):
 
 
 #test
-#ss
 
 # SSH Server + Sockets
 
