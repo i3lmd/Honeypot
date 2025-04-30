@@ -34,7 +34,6 @@ def emulate_shell(channel, client_ip):
         if not char:
             channel.close()
         
-
 # SSH Server + Sockets
 
 # Provision SSH_based  Server
