@@ -19,7 +19,6 @@ credentials_handler=RotatingFileHandler('cmd_audits.log', maxBytes=2000, backupC
 credentials_handler.setFormatter(logging_format)
 credentials_logger.addHandler(credentials_handler)
 
-#anus
 # Emulate Shell
 
 def emulate_shell(channel, client_ip):
@@ -36,7 +35,7 @@ def emulate_shell(channel, client_ip):
             channel.close()
         
 
-
+print("Hello world")
 # SSH Server + Sockets
 
 # Provision SSH_based  Server
