@@ -4,6 +4,9 @@ from logging.handlers import RotatingFileHandler
 import socket
 import paramiko
 
+SSH_BANNER = ""
+host_key = "server.key"
+
 # Constants
 logging_format = logging.Formatter('%(message)s')
 
@@ -79,4 +82,28 @@ class SSHServer(paramiko.ServerInterface):
     
     def check_channel_pty_request(channel, term, width, height, pixelwidth, pixelheight, modes):
         return True
+    
+def client_handler(client,addr,username,password):
+    client_ip = addr[0]
+    print(f"{client_ip} has connected")
+    
+    try:
+        
+        transport = paramiko.Transport()
+        transport.local_version = SSH_BANNER
+        server = SSHServer(client_ip=client_ip, input_username=username,input_passwords=password)
+        
+        transport.add_server_key(host_key)
+        
+        transport.start_server(server=server)
+        
+        channel = transport.accept(100)
+        if channel is None:
+            print("No channel was opened.")
+    except Exception as e:
+        pass
+    finally:
+        pass
+
+    
 # Provision SSH_based  Server
