@@ -91,6 +91,7 @@ def emulate_shell(channel, client_ip):
         channel.send(response)
         channel.send(b"user@honeypot$ ")
         command = b""
+        
 
 # SSH Server + Sockets
 class SSHServer(paramiko.ServerInterface):
