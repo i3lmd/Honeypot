@@ -2,10 +2,11 @@
 import logging
 from logging.handlers import RotatingFileHandler
 import socket
+import threading
 import paramiko
 
-SSH_BANNER = "WELCOME TO PUCCI SSH SERVER"
-host_key = "server.key"
+SSH_BANNER = "SSH-2.0-PucciSSH_1.0"
+host_key = paramiko.RSAKey(filename="server.key")
 
 # Constants
 logging_format = logging.Formatter('%(message)s')
@@ -32,29 +33,53 @@ def emulate_shell(channel, client_ip):
     """
     Way to send dialogue messages/strings over the SSH connection
     """
-    # Log the command
-    channel.send("user@honeypot$ ")
+    channel.send(b"user@honeypot$ ")
     command = b""
+    
     while True:
-        char = channel.recv(1)
-        channel.send(char)
-        if not char:
-            channel.close()
-        command += char
+        try:
+            char = channel.recv(1)
+            if not char:
+                break
+            channel.send(char)
+            command += char
 
-        if char == b"\r":
-            if command.strip() == b"whoami":
-                response = b"\n" + "user" + b"\r\n"
-            elif command.strip() == b"exit":
-                response = b"\n" + "Goodbye!" + b"\n"
-                channel.close()
-        channel.send(response)
-        channel.send(b"user@honeypot$ ")
-        command = b""
+            if char == b"\r":
+                cmd = command.strip().decode('utf-8', errors='ignore')
+                if cmd == "whoami":
+                    response = b"\nuser\r\n"
+                elif cmd == "pwd":
+                    response = b"\n/home/user\r\n"
+                elif cmd == "ls":
+                    response = b"\ntest.txt\r\n"
+                elif cmd == "ls -la":
+                    response = b"\n-rw-r--r-- 1 user user 0 Oct 12 10:37 test.txt\r\n"
+                elif cmd == "cat text.txt":
+                    response = b"\nThis is a test file.\r\n"
+                elif cmd == "exit":
+                    response = b"\nGoodbye!\n"
+                    channel.send(response)
+                    channel.close()
+                    break
+                else:
+                    response = b"\nUnknown command\r\n"
+
+                channel.send(response)
+                channel.send(b"user@honeypot$ ")
+                command = b""
+        except Exception as e:
+            print(f"[{client_ip}] Error in shell: {e}")
+            break
+
+    try:
+        channel.close()
+    except:
+        pass
 
 # SSH Server + Sockets
 class SSHServer(paramiko.ServerInterface):
     def __init__(self, client_ip, input_username=None, input_passwords=None):
+        self.event = threading.Event()
         self.client_ip = client_ip
         self.input_username = input_username
         self.input_passwords = input_passwords
@@ -64,8 +89,9 @@ class SSHServer(paramiko.ServerInterface):
             return paramiko.OPEN_SUCCEEDED
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
 
-    def get_allowed_auths(self) -> str:
+    def get_allowed_auths(self, username: str) -> str:
         return "password"
+
 
     def check_auth_password(self, username: str, password: str) -> int:
         if username == "user" and password == "password":
@@ -80,8 +106,9 @@ class SSHServer(paramiko.ServerInterface):
         command = str(command)
         return True
     
-    def check_channel_pty_request(channel, term, width, height, pixelwidth, pixelheight, modes):
+    def check_channel_pty_request(self,channel,term,width,height,pixelwidth,pixelheight,modes):
         return True
+
     
 def client_handler(client,addr,username,password):
     client_ip = addr[0]
@@ -89,7 +116,7 @@ def client_handler(client,addr,username,password):
     
     try:
         
-        transport = paramiko.Transport()
+        transport = paramiko.Transport(client)
         transport.local_version = SSH_BANNER
         server = SSHServer(client_ip=client_ip, input_username=username,input_passwords=password)
         
@@ -100,6 +127,10 @@ def client_handler(client,addr,username,password):
         channel = transport.accept(100)
         if channel is None:
             print("No channel was opened.")
+            
+        standard_banner = "hello world\n\r"
+        channel.send(standard_banner)
+        emulate_shell(channel,client_ip=client_ip)
     except Exception as e:
         print(f"{e}")
     finally:
@@ -110,3 +141,20 @@ def client_handler(client,addr,username,password):
 
     
 # Provision SSH_based  Server
+
+def honeypot(address, port, username, password):
+    socks = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    socks.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    socks.bind((address,port))
+    
+    socks.listen(100)
+    print(f"Honeypot listening on {address}:{port}")
+    
+    while True:
+        try:
+            client, addr = socks.accept()
+            client_thread = threading.Thread(target=client_handler, args=(client,addr,username,password))
+            client_thread.start()
+        except Exception as e:
+            raise e
+honeypot('127.0.0.1',2223,'user','password')
