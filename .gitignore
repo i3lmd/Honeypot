@@ -1,3 +1,4 @@
+.gitignore
 server.key
 server.key.pub
 .vscode
