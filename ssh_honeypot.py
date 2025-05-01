@@ -61,8 +61,17 @@ def emulate_shell(channel, client_ip):
                     channel.send(response)
                     channel.close()
                     break
+                elif cmd == "history":
+                    response_str = ""
+                    for index, command in enumerate(history):
+                        response_str += f"{index}:\t{command}\n"
+                    response = b"\n" + response_str.encode() + b"\r\n"
+
+
                 else:
                     response = b"\nUnknown command\r\n"
+                    
+                
 
                 channel.send(response)
                 channel.send(b"user@honeypot$ ")
@@ -158,3 +167,6 @@ def honeypot(address, port, username, password):
         except Exception as e:
             raise e
 honeypot('127.0.0.1',2223,'user','password')
+
+
+
