@@ -4,7 +4,7 @@ from logging.handlers import RotatingFileHandler
 import socket
 import paramiko
 
-SSH_BANNER = ""
+SSH_BANNER = "WELCOME TO PUCCI SSH SERVER"
 host_key = "server.key"
 
 # Constants
@@ -101,9 +101,12 @@ def client_handler(client,addr,username,password):
         if channel is None:
             print("No channel was opened.")
     except Exception as e:
-        pass
+        print(f"{e}")
     finally:
-        pass
+        try:
+            channel.close()
+        except Exception as e:
+            print(f"{e}")
 
     
 # Provision SSH_based  Server
