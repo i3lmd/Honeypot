@@ -14,28 +14,24 @@ logging_format = logging.Formatter('%(message)s')
 # Loggers & Logging files
 funnel_logger = logging.getLogger('Funnel_Logger')
 funnel_logger.setLevel(logging.INFO)
-funnel_handler = RotatingFileHandler(
-    'audits.log', maxBytes=2000, backupCount=5)
+funnel_handler = RotatingFileHandler('audits.log', maxBytes=2000, backupCount=5)
 funnel_handler.setFormatter(logging_format)
 funnel_logger.addHandler(funnel_handler)
 
 credentials_logger = logging.getLogger('Credential_Logger')
 credentials_logger.setLevel(logging.INFO)
-credentials_handler = RotatingFileHandler(
-    'cmd_audits.log', maxBytes=2000, backupCount=5)
+credentials_handler = RotatingFileHandler('cmd_audits.log', maxBytes=2000, backupCount=5)
 credentials_handler.setFormatter(logging_format)
 credentials_logger.addHandler(credentials_handler)
 
 # Emulate Shell
-
-
+# Emulate Shell
 def emulate_shell(channel, client_ip):
-    """
-    Way to send dialogue messages/strings over the SSH connection
-    """
+    current_directory = "/home/pucci"
+    history = []  # <-- Move it here, outside the loop!
     channel.send(b"user@honeypot$ ")
     command = b""
-    
+
     while True:
         try:
             char = channel.recv(1)
@@ -45,37 +41,68 @@ def emulate_shell(channel, client_ip):
             command += char
 
             if char == b"\r":
-                cmd = command.strip().decode('utf-8', errors='ignore')
-                if cmd == "whoami":
+                stripped_command = command.strip().decode('utf-8', errors='ignore')
+                history.append(stripped_command)  # <- Append only when full command is received
+
+                if stripped_command == "whoami":
                     response = b"\nuser\r\n"
-                elif cmd == "pwd":
-                    response = b"\n/home/user\r\n"
-                elif cmd == "ls":
-                    response = b"\ntest.txt\r\n"
-                elif cmd == "ls -la":
-                    response = b"\n-rw-r--r-- 1 user user 0 Oct 12 10:37 test.txt\r\n"
-                elif cmd == "cat text.txt":
-                    response = b"\nThis is a test file.\r\n"
-                elif cmd == "exit":
+
+                elif stripped_command == "history":
+                    response_lines = [f"{i}: {cmd}" for i, cmd in enumerate(history)]
+                    response_str = "\n".join(response_lines)
+                    response = f"\n{response_str}\n\r".encode()
+
+
+                elif stripped_command == "exit":
                     response = b"\nGoodbye!\n"
                     channel.send(response)
                     channel.close()
                     break
-                elif cmd == "history":
-                    response_str = ""
-                    for index, command in enumerate(history):
-                        response_str += f"{index}:\t{command}\n"
-                    response = b"\n" + response_str.encode() + b"\r\n"
 
+                elif stripped_command.startswith("echo "):
+                    response = ("\n" + stripped_command[5:] + "\r\n").encode()
+
+                elif stripped_command == "ls":
+                    if current_directory == "/home/pucci":
+                        response = b"\nfile1.txt  file2.txt  secret_folder\r\n"
+                    elif current_directory == "/home/pucci/secret_folder":
+                        response = b"\n\r\n"
+                    else:
+                        response = b"\n\r\n"
+
+                elif stripped_command.startswith("cat ") and current_directory == "/home/pucci":
+                    file = stripped_command[4:]
+                    if file == "file1.txt":
+                        response = b"\neW91IGhhdmUgZW50ZXJlZCBhIHNlY3JldCBmaWxlIApwYXNzd29yZDogd2FfeWFfcGFwYV9wdWNjaQ==.\n\r\n"
+                    elif file == "file2.txt":
+                        response = b"\ndXNlcm5hbWU6IHB1Y2NpX211Y2NpCnBhc3N3b3JkOiAjJCFzMG0kMG4kI0A=\n\r\n"
+                    else:
+                        response = f"\ncat: {file}: No such file or directory\r\n".encode()
+
+                elif stripped_command == "clear":
+                    response = b"\n\033[H\033[J\r\n"
+
+                elif stripped_command == "cd secret_folder" and current_directory == "/home/pucci":
+                    current_directory = "/home/pucci/secret_folder"
+                    response = b"\r\n"
+
+                elif stripped_command == "cd ..":
+                    current_directory = "/home/pucci"
+                    response = b"\r\n"
+
+                elif stripped_command == "pwd":
+                    response = (f"\n{current_directory}\r\n").encode()
 
                 else:
-                    response = b"\nUnknown command\r\n"
-                    
-                
+                    response = f"\nbash: {stripped_command}: command not found\n\r\n".encode()
 
+                credentials_logger.info(f"[{client_ip}] {stripped_command}")
                 channel.send(response)
+
+                # Send the shell prompt back after response
                 channel.send(b"user@honeypot$ ")
                 command = b""
+
         except Exception as e:
             print(f"[{client_ip}] Error in shell: {e}")
             break
@@ -84,6 +111,8 @@ def emulate_shell(channel, client_ip):
         channel.close()
     except:
         pass
+
+
 
 # SSH Server + Sockets
 class SSHServer(paramiko.ServerInterface):
@@ -101,7 +130,6 @@ class SSHServer(paramiko.ServerInterface):
     def get_allowed_auths(self, username: str) -> str:
         return "password"
 
-
     def check_auth_password(self, username: str, password: str) -> int:
         if username == "user" and password == "password":
             return paramiko.AUTH_SUCCESSFUL
@@ -112,61 +140,54 @@ class SSHServer(paramiko.ServerInterface):
         return True
 
     def check_channel_exec_request(self, channel, command: str) -> bool:
-        command = str(command)
-        return True
-    
-    def check_channel_pty_request(self,channel,term,width,height,pixelwidth,pixelheight,modes):
         return True
 
-    
-def client_handler(client,addr,username,password):
+    def check_channel_pty_request(self, channel, term, width, height, pixelwidth, pixelheight, modes):
+        return True
+
+# Client Handler
+def client_handler(client, addr, username, password):
     client_ip = addr[0]
     print(f"{client_ip} has connected")
-    
+
     try:
-        
         transport = paramiko.Transport(client)
         transport.local_version = SSH_BANNER
-        server = SSHServer(client_ip=client_ip, input_username=username,input_passwords=password)
-        
+        server = SSHServer(client_ip=client_ip, input_username=username, input_passwords=password)
         transport.add_server_key(host_key)
-        
         transport.start_server(server=server)
-        
+
         channel = transport.accept(100)
         if channel is None:
             print("No channel was opened.")
-            
+            return
+
         standard_banner = "hello world\n\r"
-        channel.send(standard_banner)
-        emulate_shell(channel,client_ip=client_ip)
+        channel.send(standard_banner.encode())
+        emulate_shell(channel, client_ip=client_ip)
+
     except Exception as e:
-        print(f"{e}")
+        print(f"Exception: {e}")
     finally:
         try:
             channel.close()
         except Exception as e:
-            print(f"{e}")
+            print(f"Exception while closing: {e}")
 
-    
-# Provision SSH_based  Server
-
+# Provision SSH Honeypot
 def honeypot(address, port, username, password):
-    socks = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    socks.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    socks.bind((address,port))
-    
-    socks.listen(100)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((address, port))
+    sock.listen(100)
     print(f"Honeypot listening on {address}:{port}")
-    
+
     while True:
         try:
-            client, addr = socks.accept()
-            client_thread = threading.Thread(target=client_handler, args=(client,addr,username,password))
+            client, addr = sock.accept()
+            client_thread = threading.Thread(target=client_handler, args=(client, addr, username, password))
             client_thread.start()
         except Exception as e:
-            raise e
-honeypot('127.0.0.1',2223,'user','password')
+            print(f"Server exception: {e}")
 
-
-
+honeypot('127.0.0.1', 2223, 'user', 'password')
