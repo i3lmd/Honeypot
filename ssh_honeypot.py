@@ -2,6 +2,7 @@
 import logging
 from logging.handlers import RotatingFileHandler
 import socket
+import paramiko
 
 # Constants
 logging_format = logging.Formatter('%(message)s')
@@ -49,5 +50,33 @@ def emulate_shell(channel, client_ip):
         command = b""
 
 # SSH Server + Sockets
+class SSHServer(paramiko.ServerInterface):
+    def __init__(self, client_ip, input_username=None, input_passwords=None):
+        self.client_ip = client_ip
+        self.input_username = input_username
+        self.input_passwords = input_passwords
 
+    def check_channel_request(self, kind: str, chanid: int) -> int:
+        if kind == "session":
+            return paramiko.OPEN_SUCCEEDED
+        return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
+
+    def get_allowed_auths(self) -> str:
+        return "password"
+
+    def check_auth_password(self, username: str, password: str) -> int:
+        if username == "user" and password == "password":
+            return paramiko.AUTH_SUCCESSFUL
+        return paramiko.AUTH_FAILED
+
+    def check_channel_shell_request(self, channel) -> bool:
+        self.event.set()
+        return True
+
+    def check_channel_exec_request(self, channel, command: str) -> bool:
+        command = str(command)
+        return True
+    
+    def check_channel_pty_request(channel, term, width, height, pixelwidth, pixelheight, modes):
+        return True
 # Provision SSH_based  Server
