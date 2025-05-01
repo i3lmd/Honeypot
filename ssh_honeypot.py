@@ -35,6 +35,8 @@ def emulate_shell(channel, client_ip):
     # Log the command
     channel.send("user@honeypot$ ")
     command = b""
+    current_directory = b"/home/pucci"
+    
     while True:
         char = channel.recv(1)
         channel.send(char)
@@ -43,11 +45,49 @@ def emulate_shell(channel, client_ip):
         command += char
 
         if char == b"\r":
-            if command.strip() == b"whoami":
+            stripped_command = command.strip()
+            
+            if stripped_command == b"whoami":
                 response = b"\n" + "user" + b"\r\n"
-            elif command.strip() == b"exit":
+                
+            elif stripped_command == b"exit":
                 response = b"\n" + "Goodbye!" + b"\n"
                 channel.close()
+                
+            elif stripped_command.startswith("echo "):
+                response = b"\n" + f"{stripped_command[5:]}\n" + b"\r\n"
+                
+            elif stripped_command == "ls":
+                response = "\nfile1.txt  file2.txt  secret_folder\n"
+                
+            elif stripped_command.startswith("cat ") and current_directory == b"/home/pucci":
+                if stripped_command[3:] == b"file1.txt":
+                    response = b"\n" + "eW91IGhhdmUgZW50ZXJlZCBhIHNlY3JldCBmaWxlIApwYXNzd29yZDogd2FfeWFfcGFwYV9wdWNjaQ==.\n" + b"\r\n"
+                elif stripped_command[3:] == b"file2.txt":
+                    response = b"\n" + "dXNlcm5hbWU6IHB1Y2NpX211Y2NpCnBhc3N3b3JkOiAjJCFzMG0kMG4kI0A=\n" + b"\r\n"
+                else: 
+                    response = b"\n" + f"cat: {stripped_command[3:]}: No such file or directory\n" + b"\r\n"
+            
+            elif stripped_command == b"clear":
+                response = b"\n" + "\033[H\033[J" + b"\r\n"
+                
+            elif stripped_command == b"cd secret_folder" and current_directory == b"/home/pucci":
+                current_directory = b"/home/pucci/secret_folder"
+                response = b"\n" + current_directory + b"\r\n"
+            
+            elif stripped_command == b"ls" and current_directory == b"/home/pucci/secret_folder":
+                response = b"\n\r\n"
+            
+            elif stripped_command == b"cd ..":
+                current_directory = b"/home/pucci"
+                response = b"\n" + current_directory + b"\r\n"
+                
+            elif stripped_command == b"pwd":
+                response = b"\n" + current_directory + b"\r\n"  
+            
+            else:
+                response = b"\n" + f"bash: {stripped_command}: command not found\n" + b"\r\n"
+            
         channel.send(response)
         channel.send(b"user@honeypot$ ")
         command = b""
