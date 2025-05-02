@@ -28,7 +28,7 @@ credentials_logger.addHandler(credentials_handler)
 # Emulate Shell
 def emulate_shell(channel, client_ip):
     current_directory = "/home/pucci"
-    history = []  # <-- Move it here, outside the loop!
+    history = []
     channel.send(b"user@honeypot$ ")
     command = b""
 
@@ -37,8 +37,31 @@ def emulate_shell(channel, client_ip):
             char = channel.recv(1)
             if not char:
                 break
-            channel.send(char)
-            command += char
+
+            # Handle backspace BEFORE echoing or storing it
+            if char == b"\x7f" or char == b"\b":
+                if len(command) > 0:
+                    command = command[:-1]            # remove last byte
+                    channel.send(b"\b \b")            # move back, erase, move back again
+                continue  # skip the rest, don't echo or add char
+            
+            # Intercept escape sequences (like arrow keys)
+            if char == b'\x1b':
+                # Look ahead to see if it's part of an escape sequence
+                next1 = channel.recv(1)
+                next2 = channel.recv(1)
+                sequence = char + next1 + next2
+
+                # Check for arrow keys
+                if sequence in [b'\x1b[A', b'\x1b[B', b'\x1b[C', b'\x1b[D']:
+                    continue  # Skip them, don't send or store
+                else:
+                    # Unknown escape sequence, ignore or handle
+                    continue
+            
+            # For normal characters:
+            channel.send(char)       # echo the char
+            command += char          # add to buffer
 
             if char == b"\r":
                 stripped_command = command.strip().decode('utf-8', errors='ignore')
@@ -94,7 +117,11 @@ def emulate_shell(channel, client_ip):
                     response = (f"\n{current_directory}\r\n").encode()
 
                 else:
-                    response = f"\nbash: {stripped_command}: command not found\n\r\n".encode()
+                    if not stripped_command:
+                        response = b"\r\n"
+                        pass
+                    else:
+                        response = f"\nbash: {stripped_command}: command not found\n\r\n".encode()
 
                 credentials_logger.info(f"[{client_ip}] {stripped_command}")
                 channel.send(response)
