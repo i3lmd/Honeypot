@@ -1,4 +1,4 @@
-# PucciSSH Honeypot
+# SSH Honeypot
 
 **PucciSSH** is a custom SSH honeypot written in Python using `paramiko`. It emulates a basic shell environment and captures login attempts, commands, and client IPs. Designed to appear realistic, it supports basic Linux-like commands, logs user behavior, and serves as a lightweight deception system for threat intelligence collection.
 
