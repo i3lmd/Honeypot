@@ -21,19 +21,6 @@
 
 ---
 
-## 📂 Directory Structure
-
-project-root/
-│
-├── server.key # RSA private key for SSH host authentication
-├── honeypot.py # Main honeypot server script
-├── audits.log # (auto-generated) connection logs
-├── cmd_audits.log # (auto-generated) command logs
-└── requirements.txt # Python dependencies
-
-
----
-
 ## 🛠 Requirements
 
 Ensure you have **Python 3.7+** installed.
